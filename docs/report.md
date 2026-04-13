@@ -1,6 +1,8 @@
 # Sparse Autoencoders on an RF Modulation Classifier
 
-**Status:** End-to-end pipeline complete. Headline result: SAE features are **3.7× more correlated with classical modulation-recognition features than matched PCA directions**, and the specific features the SAE recovers are the ones classical algorithms actually used (phase statistics, envelope variance, higher-order cumulants).
+**Status:** End-to-end pipeline complete + causal ablation. Two main findings:
+1. SAE features are **3.7× more correlated with classical modulation-recognition features than matched PCA directions**; the specific features recovered are phase statistics, envelope variance, and higher-order cumulants.
+2. A per-class causal ablation shows that each classical-feature family is causally necessary for a **specific, semantically coherent subset of modulations** — ablating the phase-variance features breaks exactly the continuous-phase schemes, ablating signal-power features breaks the amplitude-modulated analog schemes, etc. Textbook modulation recognition realized causally by a CNN trained end-to-end.
 
 ## TL;DR
 A TopK sparse autoencoder trained on the penultimate-layer activations of a CNN that classifies 11 digital-modulation schemes rediscovers, as individual features, a substantial fraction of the classical hand-designed modulation-recognition feature set (higher-order cumulants, envelope variance, amplitude kurtosis, phase statistics). PCA directions of the same activation matrix do not: their average correlation with classical features is 0.15 vs the SAE's 0.55. This gives a rare falsifiable interpretability result — we know the analytical ground truth (Swami & Sadler 2000 cumulants) and can check whether the SAE finds it, without hand-labeling features or squinting at clusters.
@@ -82,17 +84,53 @@ All four are high. The SAE's interpretability advantage is not bought by sacrifi
 - **Replicates**: Swami & Sadler 2000 cumulant-based modulation classification works (the linear probe on classical features alone hits 95.6%), so the analytical ground truth is real. The CNN achieving ~97% on the same task is also unsurprising — standard RadioML-style result.
 - **Novel** (to my knowledge): I haven't found published work that explicitly trains a sparse autoencoder on an RF modulation classifier and scores its features against classical cumulant features. If this has been done elsewhere, I'd want to hear about it; either way the cross-basis comparison (SAE vs PCA against a fixed analytical ground truth) is the cleanest SAE interpretability validation I've been able to construct outside of the modular-addition toy setting in my [sister project](https://github.com/JacobFlorio/mech-interp-tiny-transformer).
 
+## Causal ablation by classical-feature family
+
+Correlation is nice but it isn't causation. To get a causal handle, I train the SAE, bucket the alive features by which classical feature they best match, and for each bucket do the following: subtract that bucket's SAE decoder contribution from the residual stream, forward through the classifier head, and measure accuracy. As a baseline for each bucket, I size-match a random sample of alive features and ablate those instead (20 trials, report mean ± std).
+
+### Overall accuracy can mislead
+![Per-family overall ablation](../results/ablation_families.png)
+
+At the aggregate level, the story looks flat: almost every family's overall accuracy drop is comparable to what you'd get by ablating the same *number* of random features. Only `C41_norm` (3 features, scale-invariant C₄₁ cumulant) is "load-bearing" by the 1σ-on-overall-accuracy test.
+
+But that's because overall accuracy averages across 11 classes. If a family is causally specific to 2-3 classes, the other 8-9 classes dilute the signal. **The per-class picture is where it gets interesting.**
+
+### Per-class ablation — every family breaks the classes it "should"
+![Per-class ablation delta heatmap](../results/ablation_per_class.png)
+
+Each row is a classical-feature family, each column is a modulation class, and the cell is the **change in that class's accuracy** after ablating the family. Blue cells are where the ablation hurt that class; the deeper the blue, the cleaner the "this family is causally necessary for this class" signal.
+
+Reading the heatmap one row at a time:
+
+| family | classes whose accuracy collapses | textbook interpretation |
+|---|---|---|
+| `phase_std` (n=16) | **CPFSK (−1.00)**, **WBFM (−1.00)** | continuous-phase modulations die when phase-variance detectors are removed |
+| `env_var` (n=8) | **8PSK (−0.46)**, **QAM16 (−0.49)** | mid-density constellations where envelope variance is the classical PSK/QAM discriminator |
+| `C21` (signal power, n=5) | **AM-SSB (−1.00)**, **AM-DSB (−1.00)** | analog amplitude modulations die when the power measurement is removed |
+| `C41_norm` (n=3) | **8PSK (−0.97)**, **QAM16 (−0.98)**, **QAM64 (−0.87)**, **WBFM (−1.00)** | higher-order constellations die when the scale-invariant C₄₁ cumulant is removed |
+
+**Every single family breaks the modulations that classical theory says it should.** This is textbook modulation recognition causally realized by a CNN trained end-to-end: ablate the "phase detector" features and continuous-phase modulations die. Ablate the "power" features and amplitude-modulated schemes die. Ablate the "envelope variance" features and the mid-density QAM/PSK confusion returns. Ablate the scale-invariant cumulant features and high-order constellations collapse.
+
+No single family was sufficient to break the classifier as a whole (overall accuracy dropped only to 60–88%), but each family was **individually necessary** for the specific subset of modulations its theoretical role would predict.
+
+### Feature density ≠ causal importance
+A subtle but important observation: `phase_std` has 16 SAE features and `env_var` has 8, but the `C41_norm` family has only 3 features — yet `C41_norm` is the only family that passes the overall-accuracy significance test, and it's the one whose ablation breaks the *most* classes (four). Meanwhile ablating the large 16-feature `phase_std` family hurts less than a random 16-feature ablation by the overall-accuracy metric.
+
+The interpretation: **the SAE represents information densely where it's informative as a correlate, not where the network causally needs it.** The CNN encodes a lot of phase-variance information because phase variance is useful for many downstream decisions, but once you restrict to *specific* class pairs (CPFSK vs the rest, WBFM vs the rest), the phase features become uniquely necessary. The overall-accuracy test is too crude to see this; the per-class test is exactly the right resolution.
+
+This is the same "density ≠ causal importance" pattern I found in the [sister mech-interp project](https://github.com/JacobFlorio/mech-interp-tiny-transformer) on grokking: the SAE finds features at all key Fourier frequencies, but the network only causally needs one per seed. Different domain, same phenomenon.
+
 ## Honest caveats
-1. **Synthetic data.** I'm using a small, self-contained IQ generator (`src/synth_data.py`), not RadioML 2018.01A. The theoretical cumulant values hold for the digital schemes; the analog classes (WBFM, AM-SSB, AM-DSB) are rougher approximations. Wiring in real RadioML data is an obvious followup.
+1. **Synthetic data.** I'm using a self-contained IQ generator (`src/synth_data.py`), not RadioML 2018.01A. The cumulant theory holds for the digital schemes; the analog classes (WBFM, AM-SSB, AM-DSB) are rougher approximations. Wiring in real RadioML data is an obvious followup.
 2. **Single SNR for SAE training (10 dB).** Features might look different under low-SNR training; I'd expect the phase-std and envelope-variance features to survive but cumulant features to get noisier.
-3. **One classifier seed.** The specific feature counts (16 phase-std features, etc.) will vary across re-trainings; the qualitative story (SAE dominated by phase and envelope features) is what I'm claiming.
-4. **Feature-level interpretability doesn't imply causal interpretability.** A feature can correlate strongly with C₄₂ without the classifier actually "using" C₄₂ in its decision. A follow-up causal ablation (along the lines of the sister project) would test this.
+3. **One classifier seed.** The specific feature counts (16 `phase_std` features, etc.) will vary across re-trainings; what I'm claiming is the qualitative pattern (each family causally owns a sensible subset of classes), which should be seed-independent.
+4. **SAE-mediated ablation.** I zero the part of the residual the SAE accounts for, not the "true" classical-feature component in d_model space. If the same information is represented outside the SAE's reconstruction, the network can still use it. A cleaner Fourier-basis-projector style ablation is a followup.
 
 ## What I want to push on next
-1. **RadioML 2018.01A**. Swap the synthetic dataset for the real one and rerun. This is the standard benchmark and makes the result comparable to published modulation-classification work.
-2. **SNR sweep.** Re-train the classifier at low SNR and check whether the SAE's feature set changes predictably (e.g., lose the cumulant matches first, keep phase-std).
-3. **Causal ablation by classical feature.** For each classical feature family, zero the SAE features that match it and measure which modulations become indistinguishable. If the CNN *causally* relies on `env_var`-like features to separate PSK from QAM, ablating them should specifically confuse those classes.
-4. **Cross-seed robustness.** Retrain the classifier 5 times from different seeds and check whether the SAE consistently finds the same classical-feature families.
+1. **Multi-seed confirmation of the per-family → per-class pattern.** Retrain 5 times, see whether `env_var` consistently breaks 8PSK/QAM16 and `C21` consistently breaks AM-SSB/AM-DSB.
+2. **RadioML 2018.01A.** Swap the synthetic dataset for the standard benchmark. Turns "synthetic toy" into a recognized baseline.
+3. **SNR sweep.** Does the SAE lose its cumulant matches first as SNR drops, or does envelope variance go first?
+4. **Cross-family causal chains.** If I ablate `C41_norm` and measure which features' activations change, do I see downstream effects in other families, suggesting the CNN computes these features compositionally?
 
 ## Reproduction
 ```bash
