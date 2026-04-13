@@ -1,8 +1,8 @@
 # Sparse Autoencoders on an RF Modulation Classifier
 
-**Status:** End-to-end pipeline complete + causal ablation. Two main findings:
-1. SAE features are **3.7× more correlated with classical modulation-recognition features than matched PCA directions**; the specific features recovered are phase statistics, envelope variance, and higher-order cumulants.
-2. A per-class causal ablation shows that each classical-feature family is causally necessary for a **specific, semantically coherent subset of modulations** — ablating the phase-variance features breaks exactly the continuous-phase schemes, ablating signal-power features breaks the amplitude-modulated analog schemes, etc. Textbook modulation recognition realized causally by a CNN trained end-to-end.
+**Status:** End-to-end pipeline complete + causal ablation + 5-seed multi-seed confirmation. Two main findings, both seed-robust:
+1. SAE features are **~3.8× more correlated with classical modulation-recognition features than matched PCA directions** (median across 5 seeds; single-seed numbers 3.6×–5.0×).
+2. A per-class causal ablation shows that each classical-feature family is causally necessary for a **specific, semantically coherent subset of modulations** — `C41_mag` → BPSK (5/5 seeds, Δ −1.00), `phase_std` → CPFSK (5/5, Δ −0.99), `spec_bandwidth` → 8PSK/QAM16 (5/5, Δ ≈ −0.95), `env_var` → QAM16 (5/5, Δ −0.82). Textbook modulation recognition causally realized by a CNN trained end-to-end.
 
 ## TL;DR
 A TopK sparse autoencoder trained on the penultimate-layer activations of a CNN that classifies 11 digital-modulation schemes rediscovers, as individual features, a substantial fraction of the classical hand-designed modulation-recognition feature set (higher-order cumulants, envelope variance, amplitude kurtosis, phase statistics). PCA directions of the same activation matrix do not: their average correlation with classical features is 0.15 vs the SAE's 0.55. This gives a rare falsifiable interpretability result — we know the analytical ground truth (Swami & Sadler 2000 cumulants) and can check whether the SAE finds it, without hand-labeling features or squinting at clusters.
@@ -119,6 +119,59 @@ A subtle but important observation: `phase_std` has 16 SAE features and `env_var
 The interpretation: **the SAE represents information densely where it's informative as a correlate, not where the network causally needs it.** The CNN encodes a lot of phase-variance information because phase variance is useful for many downstream decisions, but once you restrict to *specific* class pairs (CPFSK vs the rest, WBFM vs the rest), the phase features become uniquely necessary. The overall-accuracy test is too crude to see this; the per-class test is exactly the right resolution.
 
 This is the same "density ≠ causal importance" pattern I found in the [sister mech-interp project](https://github.com/JacobFlorio/mech-interp-tiny-transformer) on grokking: the SAE finds features at all key Fourier frequencies, but the network only causally needs one per seed. Different domain, same phenomenon.
+
+## Multi-seed confirmation (n = 5)
+
+Everything above is one classifier seed. To check which findings are robust, I retrained the full pipeline (classifier → activations → SAE → correlation analysis → per-family causal ablation) from scratch with 5 different seeds (0 … 4).
+
+### SAE vs PCA interpretability is seed-robust
+![Multi-seed interpretability](../results/multi_interpretability.png)
+
+Every seed reproduces the 3–5× SAE advantage:
+
+| seed | SAE mean max \|r\| | PCA mean max \|r\| | ratio |
+|---:|---:|---:|---:|
+| 0 | 0.448 | 0.123 | 3.6× |
+| 1 | 0.611 | 0.149 | 4.1× |
+| 2 | 0.490 | 0.129 | 3.8× |
+| 3 | 0.495 | 0.138 | 3.6× |
+| 4 | 0.607 | 0.122 | 5.0× |
+| **median** | **0.495** | **0.129** | **3.83×** |
+
+Both the headline mean-max-|r| number and the SAE/PCA ratio are stable across seeds. The original single-seed result (0.545 / 0.148 / 3.7×) is well inside the seed-to-seed spread.
+
+### Which (family, class) causal links are seed-robust?
+![Per-(family, class) multi-seed heatmap](../results/multi_family_class.png)
+
+For each `(classical_family, modulation_class)` pair, I compute the median accuracy delta across seeds and count how many seeds "broke" that class (≥25% drop). Cells are labeled `median_delta` on top and `broken_count / seeds_where_family_was_present` on the bottom, so you can see the data behind every cell. A family only becomes a bucket in seeds where at least one SAE feature's best classical match is that name, so some families are missing in some seeds — this is why the bottom numbers aren't always `n/5`.
+
+**Per-(family, class) pairs load-bearing in ≥60% of seeds (14 pairs):**
+
+| family → class | seeds broken | median Δ | textbook interpretation |
+|---|---:|---:|---|
+| `C41_mag` → **BPSK** | **5/5** | **−1.00** | BPSK's binary constellation has a large C₄₁ magnitude; ablating it makes the classifier blind to BPSK in every seed |
+| `phase_std` → **CPFSK** | **5/5** | **−0.99** | continuous-phase FSK collapses when phase-variance detectors are removed |
+| `spec_bandwidth` → **8PSK** | **5/5** | −0.97 | high-order PSK has a tighter spectral envelope; removing spectral-bandwidth features breaks it |
+| `spec_bandwidth` → **QAM16** | **5/5** | −0.91 | same family; QAM16 also loses discrimination without spectral width |
+| `env_var` → **QAM16** | **5/5** | −0.82 | envelope variance is the canonical PSK/QAM discriminator |
+| `phase_std` → **WBFM** | 4/5 | −1.00 | wideband FM is another continuous-phase scheme |
+| `phase_std` → **GFSK** | 4/5 | −0.57 | GFSK is phase-based; partial collapse |
+| `spec_bandwidth` → **QPSK** | 4/5 | −0.92 | QPSK needs spectral width too |
+| `C21` → **AM-SSB** | 3/5 | −1.00 | signal power ablation kills single-sideband AM when the family is present |
+| `C20_mag` → **BPSK** | 3/4 | −1.00 | BPSK's non-zero M₂₀ shows up in a different cumulant bucket in some seeds |
+| `C41_norm` → **QAM16** | 3/3 | −0.97 | scale-invariant C₄₁; consistent when present |
+| `C41_norm` → **8PSK** | 3/3 | −0.97 | same |
+| `C41_norm` → **WBFM** | 2/3 | −1.00 | same |
+| `C40_norm` → **8PSK** | 2/3 | −0.35 | scale-invariant C₄₀; weaker but present |
+
+The most unanimous causal link in the whole experiment is **`C41_mag` → BPSK** (5/5 seeds, median Δ = −1.00). Every time the classifier is retrained, at least one SAE feature locks onto the C₄₁ magnitude, and ablating those features specifically and completely kills BPSK classification. `phase_std → CPFSK` is the same story.
+
+### New findings that only multi-seed reveals
+- **`spec_bandwidth` is a major causal family I missed in the single-seed write-up.** Across 5 seeds it's load-bearing for 8PSK (5/5), QAM16 (5/5), and QPSK (4/5) — as important as `phase_std` by number of classes broken. The single-seed run had only 3 `spec_bandwidth` features and I underweighted it.
+- **`C41_mag` → BPSK is unanimous** (5/5). The original single-seed analysis called C41_norm the load-bearing family by overall-accuracy; the multi-seed per-class view reveals that both `C41_mag` and `C41_norm` are robust, just binding to different classes (`C41_mag` binds to BPSK unambiguously; `C41_norm` binds to higher-order QAM).
+- **Classical-family bucket membership is itself seed-dependent.** `C41_norm` only exists as a bucket in 3 of 5 seeds — the other 2 seeds' SAE features at that correlation get binned as `C41_mag` instead. This is a real subtlety of the correlation-based bucketing: closely related classical features can compete for the "best match" tag. The per-class causal signature is more stable than the per-family feature counts.
+
+The qualitative story — "each classical family causally owns a semantically coherent subset of modulations" — survives multi-seed. Several specific (family, class) pairs are near-unanimous. Feature counts per family are noisier than the causal links they imply.
 
 ## Honest caveats
 1. **Synthetic data.** I'm using a self-contained IQ generator (`src/synth_data.py`), not RadioML 2018.01A. The cumulant theory holds for the digital schemes; the analog classes (WBFM, AM-SSB, AM-DSB) are rougher approximations. Wiring in real RadioML data is an obvious followup.

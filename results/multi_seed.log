@@ -1,0 +1,551 @@
+
+===== seed 0 =====
+$ /usr/bin/python3 -m src.train --seed 0 --out results/seed_0/classifier.pt
+generating train set: 1024/class × 3 SNRs × 11 classes
+  shape (33792, 2, 1024)
+epoch  0  loss 1.0152  train 0.740
+epoch  1  loss 0.5545  train 0.780
+epoch  2  loss 0.5055  train 0.774
+epoch  3  loss 0.4187  train 0.825
+epoch  4  loss 0.3303  train 0.893
+epoch  5  loss 0.2785  train 0.897
+epoch  6  loss 0.2111  train 0.934
+epoch  7  loss 0.2090  train 0.950
+epoch  8  loss 0.1415  train 0.950
+epoch  9  loss 0.1343  train 0.948
+epoch 10  loss 0.1229  train 0.935
+epoch 11  loss 0.1173  train 0.967
+epoch 12  loss 0.1127  train 0.962
+epoch 13  loss 0.1016  train 0.971
+epoch 14  loss 0.0953  train 0.966
+epoch 15  loss 0.0913  train 0.968
+epoch 16  loss 0.1398  train 0.971
+epoch 17  loss 0.0799  train 0.957
+epoch 18  loss 0.0789  train 0.975
+epoch 19  loss 0.0776  train 0.961
+
+=== held-out evaluation ===
+  SNR   0.0 dB  overall 0.183  worst QPSK=0.00
+  SNR   5.0 dB  overall 0.906  worst QPSK=0.69
+  SNR  10.0 dB  overall 0.986  worst GFSK=0.93
+  SNR  15.0 dB  overall 0.991  worst QPSK=0.95
+  SNR  20.0 dB  overall 0.989  worst QPSK=0.93
+saved → results/seed_0/classifier.pt
+$ /usr/bin/python3 -m src.collect_and_train_sae --classifier results/seed_0/classifier.pt --seed 0 --out-sae results/seed_0/sae.pt --out-activations results/seed_0/activations.npz
+loading classifier from results/seed_0/classifier.pt
+generating 1024/class @ SNR 10.0 dB
+  iq shape (11264, 2, 1024)
+collecting penultimate activations
+  activation shape (11264, 256)  mean 7.364  std 11.161
+computing classical features
+  classical feature shape (11264, 16)
+training TopK SAE (d_sae=128, k=8, epochs=3000)
+  step     0  mse 68.90398  var_explained 0.054  dead 63/128
+  step   200  mse 1.30842  var_explained 0.982  dead 71/128
+  step   400  mse 0.36859  var_explained 0.995  dead 69/128
+  step   600  mse 0.20581  var_explained 0.997  dead 64/128
+  step   800  mse 0.13974  var_explained 0.998  dead 58/128
+  step  1000  mse 0.11403  var_explained 0.998  dead 72/128
+  step  1200  mse 0.08612  var_explained 0.999  dead 61/128
+  step  1400  mse 0.06892  var_explained 0.999  dead 60/128
+  step  1600  mse 0.06103  var_explained 0.999  dead 73/128
+  step  1800  mse 0.05412  var_explained 0.999  dead 64/128
+  step  2000  mse 0.05610  var_explained 0.999  dead 68/128
+  step  2200  mse 0.03976  var_explained 0.999  dead 73/128
+  step  2400  mse 0.03293  var_explained 1.000  dead 68/128
+  step  2600  mse 0.02972  var_explained 1.000  dead 72/128
+  step  2800  mse 0.02550  var_explained 1.000  dead 61/128
+  step  3000  mse 0.02334  var_explained 1.000  dead 64/128
+  SAE feature shape (11264, 128)
+saved → results/seed_0/sae.pt
+saved → results/seed_0/activations.npz
+$ /usr/bin/python3 -m src.analyze_sae_vs_classical --activations results/seed_0/activations.npz --out results/seed_0/sae_vs_classical.json
+alive SAE features: 63/128
+
+=== SAE vs PCA interpretability ===
+                              SAE        PCA
+  mean_max_r                0.448      0.123
+  median_max_r              0.556      0.039
+  fraction_strong           0.286      0.048
+  fraction_cleanly_one_classical      0.048      0.016
+
+=== which classical features did SAE features lock onto? ===
+  phase_std             15
+  spec_bandwidth        11
+  C41_mag               10
+  env_var                9
+  amp_kurtosis           5
+  C21                    5
+  papr                   2
+  amp_mean               2
+  C41_norm               2
+  amp_std                1
+  spec_centroid          1
+
+=== linear probe (test accuracy) ===
+  raw activations (256)     0.998
+  classical (16)            0.974
+  SAE alive (63)            0.996
+  PCA (63)                  0.998
+
+saved → results/seed_0/sae_vs_classical.json
+$ /usr/bin/python3 -m src.ablation --classifier results/seed_0/classifier.pt --sae results/seed_0/sae.pt --activations results/seed_0/activations.npz --analysis results/seed_0/sae_vs_classical.json --out results/seed_0/ablation.json
+alive features: 63
+classical families with SAE features: 11
+baseline accuracy: 0.9818
+
+=== per-family ablation ===
+  family                  n  abl_acc  rand_mean  rand_std  ★
+  C21                     5   0.7892     0.8131    0.1457   
+  C41_mag                10   0.8014     0.7022    0.1468   
+  C41_norm                2   0.7189     0.9352    0.0768  ★
+  amp_kurtosis            5   0.9818     0.8239    0.0977   
+  amp_mean                2   0.8000     0.9147    0.0921  ★
+  amp_std                 1   0.9818     0.9335    0.0804   
+  env_var                 9   0.9050     0.7428    0.1352   
+  papr                    2   0.9818     0.9540    0.0566   
+  phase_std              15   0.8059     0.5934    0.1321   
+  spec_bandwidth         11   0.6014     0.6910    0.1437   
+  spec_centroid           1   0.9818     0.9384    0.0842   
+
+saved → results/seed_0/ablation.json
+
+===== seed 1 =====
+$ /usr/bin/python3 -m src.train --seed 1 --out results/seed_1/classifier.pt
+generating train set: 1024/class × 3 SNRs × 11 classes
+  shape (33792, 2, 1024)
+epoch  0  loss 1.1051  train 0.631
+epoch  1  loss 0.6354  train 0.726
+epoch  2  loss 0.5674  train 0.724
+epoch  3  loss 0.5117  train 0.766
+epoch  4  loss 0.4330  train 0.799
+epoch  5  loss 0.3439  train 0.888
+epoch  6  loss 0.2744  train 0.881
+epoch  7  loss 0.2217  train 0.937
+epoch  8  loss 0.1894  train 0.938
+epoch  9  loss 0.1824  train 0.947
+epoch 10  loss 0.1438  train 0.957
+epoch 11  loss 0.1418  train 0.946
+epoch 12  loss 0.1253  train 0.942
+epoch 13  loss 0.1133  train 0.955
+epoch 14  loss 0.1186  train 0.950
+epoch 15  loss 0.2024  train 0.952
+epoch 16  loss 0.1093  train 0.966
+epoch 17  loss 0.0893  train 0.969
+epoch 18  loss 0.0879  train 0.954
+epoch 19  loss 0.0798  train 0.972
+
+=== held-out evaluation ===
+  SNR   0.0 dB  overall 0.282  worst 8PSK=0.00
+  SNR   5.0 dB  overall 0.944  worst QAM16=0.78
+  SNR  10.0 dB  overall 0.976  worst QAM16=0.80
+  SNR  15.0 dB  overall 0.989  worst QAM16=0.90
+  SNR  20.0 dB  overall 0.993  worst QAM16=0.94
+saved → results/seed_1/classifier.pt
+$ /usr/bin/python3 -m src.collect_and_train_sae --classifier results/seed_1/classifier.pt --seed 1 --out-sae results/seed_1/sae.pt --out-activations results/seed_1/activations.npz
+loading classifier from results/seed_1/classifier.pt
+generating 1024/class @ SNR 10.0 dB
+  iq shape (11264, 2, 1024)
+collecting penultimate activations
+  activation shape (11264, 256)  mean 7.375  std 13.755
+computing classical features
+  classical feature shape (11264, 16)
+training TopK SAE (d_sae=128, k=8, epochs=3000)
+  step     0  mse 111.32529  var_explained 0.062  dead 71/128
+  step   200  mse 3.35381  var_explained 0.972  dead 87/128
+  step   400  mse 1.01997  var_explained 0.991  dead 84/128
+  step   600  mse 0.65778  var_explained 0.994  dead 84/128
+  step   800  mse 0.47431  var_explained 0.996  dead 79/128
+  step  1000  mse 0.34023  var_explained 0.997  dead 75/128
+  step  1200  mse 0.24449  var_explained 0.998  dead 76/128
+  step  1400  mse 0.18903  var_explained 0.998  dead 68/128
+  step  1600  mse 0.13112  var_explained 0.999  dead 77/128
+  step  1800  mse 0.10822  var_explained 0.999  dead 66/128
+  step  2000  mse 0.09009  var_explained 0.999  dead 64/128
+  step  2200  mse 0.07975  var_explained 0.999  dead 71/128
+  step  2400  mse 0.07084  var_explained 0.999  dead 80/128
+  step  2600  mse 0.06328  var_explained 0.999  dead 83/128
+  step  2800  mse 0.05719  var_explained 1.000  dead 82/128
+  step  3000  mse 0.05201  var_explained 1.000  dead 82/128
+  SAE feature shape (11264, 128)
+saved → results/seed_1/sae.pt
+saved → results/seed_1/activations.npz
+$ /usr/bin/python3 -m src.analyze_sae_vs_classical --activations results/seed_1/activations.npz --out results/seed_1/sae_vs_classical.json
+alive SAE features: 46/128
+
+=== SAE vs PCA interpretability ===
+                              SAE        PCA
+  mean_max_r                0.611      0.149
+  median_max_r              0.645      0.050
+  fraction_strong           0.413      0.043
+  fraction_cleanly_one_classical      0.109      0.000
+
+=== which classical features did SAE features lock onto? ===
+  phase_std             14
+  spec_bandwidth         8
+  C21                    5
+  C41_mag                5
+  amp_kurtosis           5
+  amp_mean               3
+  C20_mag                2
+  env_var                2
+  amp_std                1
+  C40_norm               1
+
+=== linear probe (test accuracy) ===
+  raw activations (256)     0.995
+  classical (16)            0.967
+  SAE alive (46)            0.992
+  PCA (46)                  0.995
+
+saved → results/seed_1/sae_vs_classical.json
+$ /usr/bin/python3 -m src.ablation --classifier results/seed_1/classifier.pt --sae results/seed_1/sae.pt --activations results/seed_1/activations.npz --analysis results/seed_1/sae_vs_classical.json --out results/seed_1/ablation.json
+alive features: 46
+classical families with SAE features: 10
+baseline accuracy: 0.9798
+
+=== per-family ablation ===
+  family                  n  abl_acc  rand_mean  rand_std  ★
+  C20_mag                 2   0.8852     0.9122    0.0807   
+  C21                     5   0.8888     0.7274    0.1235   
+  C40_norm                1   0.8612     0.9526    0.0602  ★
+  C41_mag                 5   0.8888     0.7826    0.1139   
+  amp_kurtosis            5   0.9798     0.7860    0.1135   
+  amp_mean                3   0.9775     0.8587    0.1129   
+  amp_std                 1   0.9797     0.9462    0.0634   
+  env_var                 2   0.9471     0.8858    0.0918   
+  phase_std              14   0.7987     0.5751    0.1209   
+  spec_bandwidth          8   0.6361     0.7330    0.1256   
+
+saved → results/seed_1/ablation.json
+
+===== seed 2 =====
+$ /usr/bin/python3 -m src.train --seed 2 --out results/seed_2/classifier.pt
+generating train set: 1024/class × 3 SNRs × 11 classes
+  shape (33792, 2, 1024)
+epoch  0  loss 1.0059  train 0.750
+epoch  1  loss 0.5586  train 0.706
+epoch  2  loss 0.4952  train 0.796
+epoch  3  loss 0.4239  train 0.834
+epoch  4  loss 0.3361  train 0.891
+epoch  5  loss 0.2602  train 0.876
+epoch  6  loss 0.2333  train 0.899
+epoch  7  loss 0.2065  train 0.929
+epoch  8  loss 0.1647  train 0.940
+epoch  9  loss 0.1362  train 0.940
+epoch 10  loss 0.2800  train 0.939
+epoch 11  loss 0.1420  train 0.943
+epoch 12  loss 0.1162  train 0.961
+epoch 13  loss 0.1073  train 0.954
+epoch 14  loss 0.1032  train 0.960
+epoch 15  loss 0.0988  train 0.962
+epoch 16  loss 0.0938  train 0.964
+epoch 17  loss 0.0921  train 0.956
+epoch 18  loss 0.0922  train 0.967
+epoch 19  loss 0.0790  train 0.967
+
+=== held-out evaluation ===
+  SNR   0.0 dB  overall 0.191  worst QPSK=0.00
+  SNR   5.0 dB  overall 0.926  worst 8PSK=0.74
+  SNR  10.0 dB  overall 0.979  worst QPSK=0.91
+  SNR  15.0 dB  overall 0.993  worst QPSK=0.97
+  SNR  20.0 dB  overall 0.996  worst QPSK=0.97
+saved → results/seed_2/classifier.pt
+$ /usr/bin/python3 -m src.collect_and_train_sae --classifier results/seed_2/classifier.pt --seed 2 --out-sae results/seed_2/sae.pt --out-activations results/seed_2/activations.npz
+loading classifier from results/seed_2/classifier.pt
+generating 1024/class @ SNR 10.0 dB
+  iq shape (11264, 2, 1024)
+collecting penultimate activations
+  activation shape (11264, 256)  mean 6.074  std 10.652
+computing classical features
+  classical feature shape (11264, 16)
+training TopK SAE (d_sae=128, k=8, epochs=3000)
+  step     0  mse 66.97540  var_explained 0.069  dead 72/128
+  step   200  mse 1.27959  var_explained 0.982  dead 79/128
+  step   400  mse 0.47628  var_explained 0.993  dead 81/128
+  step   600  mse 0.30217  var_explained 0.996  dead 76/128
+  step   800  mse 0.21826  var_explained 0.997  dead 70/128
+  step  1000  mse 0.16408  var_explained 0.998  dead 74/128
+  step  1200  mse 0.13725  var_explained 0.998  dead 75/128
+  step  1400  mse 0.10784  var_explained 0.999  dead 78/128
+  step  1600  mse 0.09242  var_explained 0.999  dead 76/128
+  step  1800  mse 0.07679  var_explained 0.999  dead 61/128
+  step  2000  mse 0.06802  var_explained 0.999  dead 69/128
+  step  2200  mse 0.05892  var_explained 0.999  dead 73/128
+  step  2400  mse 0.05196  var_explained 0.999  dead 73/128
+  step  2600  mse 0.04779  var_explained 0.999  dead 80/128
+  step  2800  mse 0.04258  var_explained 0.999  dead 76/128
+  step  3000  mse 0.03793  var_explained 0.999  dead 69/128
+  SAE feature shape (11264, 128)
+saved → results/seed_2/sae.pt
+saved → results/seed_2/activations.npz
+$ /usr/bin/python3 -m src.analyze_sae_vs_classical --activations results/seed_2/activations.npz --out results/seed_2/sae_vs_classical.json
+alive SAE features: 58/128
+
+=== SAE vs PCA interpretability ===
+                              SAE        PCA
+  mean_max_r                0.490      0.129
+  median_max_r              0.562      0.038
+  fraction_strong           0.293      0.034
+  fraction_cleanly_one_classical      0.034      0.017
+
+=== which classical features did SAE features lock onto? ===
+  phase_std             23
+  C21                    9
+  C41_mag                6
+  amp_kurtosis           5
+  env_var                4
+  spec_bandwidth         3
+  C41_norm               2
+  amp_std                2
+  spec_centroid          1
+  C42                    1
+  C40_norm               1
+  C20_mag                1
+
+=== linear probe (test accuracy) ===
+  raw activations (256)     0.996
+  classical (16)            0.976
+  SAE alive (58)            0.993
+  PCA (58)                  0.997
+
+saved → results/seed_2/sae_vs_classical.json
+$ /usr/bin/python3 -m src.ablation --classifier results/seed_2/classifier.pt --sae results/seed_2/sae.pt --activations results/seed_2/activations.npz --analysis results/seed_2/sae_vs_classical.json --out results/seed_2/ablation.json
+alive features: 58
+classical families with SAE features: 12
+baseline accuracy: 0.9798
+
+=== per-family ablation ===
+  family                  n  abl_acc  rand_mean  rand_std  ★
+  C20_mag                 1   0.9797     0.9433    0.0626   
+  C21                     9   0.5735     0.7165    0.1107  ★
+  C40_norm                1   0.9798     0.9351    0.0772   
+  C41_mag                 6   0.8897     0.7308    0.1804   
+  C41_norm                2   0.7266     0.9355    0.0694  ★
+  C42                     1   0.8683     0.9451    0.0651  ★
+  amp_kurtosis            5   0.9798     0.8079    0.1503   
+  amp_std                 2   0.9790     0.9078    0.0712   
+  env_var                 4   0.9415     0.8401    0.1161   
+  phase_std              23   0.7717     0.4397    0.0957   
+  spec_bandwidth          3   0.7258     0.8717    0.1085  ★
+  spec_centroid           1   0.9798     0.9348    0.0748   
+
+saved → results/seed_2/ablation.json
+
+===== seed 3 =====
+$ /usr/bin/python3 -m src.train --seed 3 --out results/seed_3/classifier.pt
+generating train set: 1024/class × 3 SNRs × 11 classes
+  shape (33792, 2, 1024)
+epoch  0  loss 1.1729  train 0.688
+epoch  1  loss 0.5702  train 0.740
+epoch  2  loss 0.5182  train 0.763
+epoch  3  loss 0.4815  train 0.811
+epoch  4  loss 0.4281  train 0.844
+epoch  5  loss 0.3379  train 0.885
+epoch  6  loss 0.2634  train 0.905
+epoch  7  loss 0.2115  train 0.938
+epoch  8  loss 0.1891  train 0.950
+epoch  9  loss 0.1593  train 0.946
+epoch 10  loss 0.1485  train 0.953
+epoch 11  loss 0.1255  train 0.920
+epoch 12  loss 0.2829  train 0.946
+epoch 13  loss 0.1391  train 0.953
+epoch 14  loss 0.1110  train 0.962
+epoch 15  loss 0.1015  train 0.955
+epoch 16  loss 0.1002  train 0.964
+epoch 17  loss 0.0936  train 0.969
+epoch 18  loss 0.0861  train 0.960
+epoch 19  loss 0.0912  train 0.964
+
+=== held-out evaluation ===
+  SNR   0.0 dB  overall 0.214  worst 8PSK=0.00
+  SNR   5.0 dB  overall 0.932  worst QPSK=0.71
+  SNR  10.0 dB  overall 0.983  worst QPSK=0.86
+  SNR  15.0 dB  overall 0.984  worst QPSK=0.85
+  SNR  20.0 dB  overall 0.987  worst QPSK=0.86
+saved → results/seed_3/classifier.pt
+$ /usr/bin/python3 -m src.collect_and_train_sae --classifier results/seed_3/classifier.pt --seed 3 --out-sae results/seed_3/sae.pt --out-activations results/seed_3/activations.npz
+loading classifier from results/seed_3/classifier.pt
+generating 1024/class @ SNR 10.0 dB
+  iq shape (11264, 2, 1024)
+collecting penultimate activations
+  activation shape (11264, 256)  mean 6.596  std 11.725
+computing classical features
+  classical feature shape (11264, 16)
+training TopK SAE (d_sae=128, k=8, epochs=3000)
+  step     0  mse 80.38246  var_explained 0.063  dead 72/128
+  step   200  mse 1.69374  var_explained 0.980  dead 81/128
+  step   400  mse 0.53668  var_explained 0.994  dead 79/128
+  step   600  mse 0.27914  var_explained 0.997  dead 69/128
+  step   800  mse 0.20701  var_explained 0.998  dead 74/128
+  step  1000  mse 0.13059  var_explained 0.998  dead 47/128
+  step  1200  mse 0.10419  var_explained 0.999  dead 78/128
+  step  1400  mse 0.08732  var_explained 0.999  dead 71/128
+  step  1600  mse 0.07408  var_explained 0.999  dead 66/128
+  step  1800  mse 0.06385  var_explained 0.999  dead 67/128
+  step  2000  mse 0.05671  var_explained 0.999  dead 64/128
+  step  2200  mse 0.05059  var_explained 0.999  dead 67/128
+  step  2400  mse 0.04503  var_explained 0.999  dead 71/128
+  step  2600  mse 0.04032  var_explained 1.000  dead 79/128
+  step  2800  mse 0.03673  var_explained 1.000  dead 79/128
+  step  3000  mse 0.03343  var_explained 1.000  dead 80/128
+  SAE feature shape (11264, 128)
+saved → results/seed_3/sae.pt
+saved → results/seed_3/activations.npz
+$ /usr/bin/python3 -m src.analyze_sae_vs_classical --activations results/seed_3/activations.npz --out results/seed_3/sae_vs_classical.json
+alive SAE features: 48/128
+
+=== SAE vs PCA interpretability ===
+                              SAE        PCA
+  mean_max_r                0.495      0.138
+  median_max_r              0.570      0.053
+  fraction_strong           0.354      0.042
+  fraction_cleanly_one_classical      0.062      0.000
+
+=== which classical features did SAE features lock onto? ===
+  phase_std             11
+  env_var                8
+  C21                    7
+  spec_bandwidth         5
+  C41_mag                5
+  C41_norm               3
+  amp_kurtosis           3
+  C40_norm               3
+  C20_mag                2
+  papr                   1
+
+=== linear probe (test accuracy) ===
+  raw activations (256)     0.996
+  classical (16)            0.969
+  SAE alive (48)            0.995
+  PCA (48)                  0.996
+
+saved → results/seed_3/sae_vs_classical.json
+$ /usr/bin/python3 -m src.ablation --classifier results/seed_3/classifier.pt --sae results/seed_3/sae.pt --activations results/seed_3/activations.npz --analysis results/seed_3/sae_vs_classical.json --out results/seed_3/ablation.json
+alive features: 48
+classical families with SAE features: 10
+baseline accuracy: 0.9793
+
+=== per-family ablation ===
+  family                  n  abl_acc  rand_mean  rand_std  ★
+  C20_mag                 2   0.8321     0.8717    0.0888   
+  C21                     7   0.7965     0.7609    0.1237   
+  C40_norm                3   0.5969     0.8209    0.1273  ★
+  C41_mag                 5   0.8872     0.7713    0.1627   
+  C41_norm                3   0.7254     0.8479    0.1156  ★
+  amp_kurtosis            3   0.9793     0.8680    0.1113   
+  env_var                 8   0.8891     0.6699    0.1325   
+  papr                    1   0.9793     0.9339    0.0686   
+  phase_std              11   0.7488     0.6055    0.1582   
+  spec_bandwidth          5   0.8004     0.8194    0.1339   
+
+saved → results/seed_3/ablation.json
+
+===== seed 4 =====
+$ /usr/bin/python3 -m src.train --seed 4 --out results/seed_4/classifier.pt
+generating train set: 1024/class × 3 SNRs × 11 classes
+  shape (33792, 2, 1024)
+epoch  0  loss 1.0457  train 0.694
+epoch  1  loss 0.6035  train 0.715
+epoch  2  loss 0.5158  train 0.749
+epoch  3  loss 0.4482  train 0.809
+epoch  4  loss 0.3681  train 0.827
+epoch  5  loss 0.3691  train 0.853
+epoch  6  loss 0.2724  train 0.869
+epoch  7  loss 0.2658  train 0.877
+epoch  8  loss 0.2349  train 0.918
+epoch  9  loss 0.1998  train 0.934
+epoch 10  loss 0.2099  train 0.941
+epoch 11  loss 0.1485  train 0.938
+epoch 12  loss 0.1297  train 0.934
+epoch 13  loss 0.1282  train 0.954
+epoch 14  loss 0.1017  train 0.970
+epoch 15  loss 0.1768  train 0.963
+epoch 16  loss 0.0987  train 0.963
+epoch 17  loss 0.0939  train 0.974
+epoch 18  loss 0.0907  train 0.966
+epoch 19  loss 0.0840  train 0.969
+
+=== held-out evaluation ===
+  SNR   0.0 dB  overall 0.183  worst BPSK=0.00
+  SNR   5.0 dB  overall 0.937  worst 8PSK=0.73
+  SNR  10.0 dB  overall 0.974  worst QPSK=0.93
+  SNR  15.0 dB  overall 0.985  worst QPSK=0.91
+  SNR  20.0 dB  overall 0.989  worst QPSK=0.93
+saved → results/seed_4/classifier.pt
+$ /usr/bin/python3 -m src.collect_and_train_sae --classifier results/seed_4/classifier.pt --seed 4 --out-sae results/seed_4/sae.pt --out-activations results/seed_4/activations.npz
+loading classifier from results/seed_4/classifier.pt
+generating 1024/class @ SNR 10.0 dB
+  iq shape (11264, 2, 1024)
+collecting penultimate activations
+  activation shape (11264, 256)  mean 7.765  std 11.556
+computing classical features
+  classical feature shape (11264, 16)
+training TopK SAE (d_sae=128, k=8, epochs=3000)
+  step     0  mse 75.21236  var_explained 0.076  dead 62/128
+  step   200  mse 0.83253  var_explained 0.990  dead 69/128
+  step   400  mse 0.35776  var_explained 0.996  dead 65/128
+  step   600  mse 0.27943  var_explained 0.997  dead 68/128
+  step   800  mse 0.24721  var_explained 0.997  dead 68/128
+  step  1000  mse 0.28858  var_explained 0.996  dead 73/128
+  step  1200  mse 0.13006  var_explained 0.998  dead 43/128
+  step  1400  mse 0.10255  var_explained 0.999  dead 46/128
+  step  1600  mse 0.08949  var_explained 0.999  dead 56/128
+  step  1800  mse 0.07968  var_explained 0.999  dead 68/128
+  step  2000  mse 0.07023  var_explained 0.999  dead 72/128
+  step  2200  mse 0.06318  var_explained 0.999  dead 75/128
+  step  2400  mse 0.05563  var_explained 0.999  dead 74/128
+  step  2600  mse 0.04844  var_explained 0.999  dead 72/128
+  step  2800  mse 0.04030  var_explained 1.000  dead 75/128
+  step  3000  mse 0.03436  var_explained 1.000  dead 76/128
+  SAE feature shape (11264, 128)
+saved → results/seed_4/sae.pt
+saved → results/seed_4/activations.npz
+$ /usr/bin/python3 -m src.analyze_sae_vs_classical --activations results/seed_4/activations.npz --out results/seed_4/sae_vs_classical.json
+alive SAE features: 52/128
+
+=== SAE vs PCA interpretability ===
+                              SAE        PCA
+  mean_max_r                0.607      0.122
+  median_max_r              0.609      0.035
+  fraction_strong           0.442      0.038
+  fraction_cleanly_one_classical      0.250      0.000
+
+=== which classical features did SAE features lock onto? ===
+  phase_std             15
+  env_var                8
+  spec_centroid          7
+  spec_bandwidth         5
+  C41_mag                5
+  amp_kurtosis           4
+  C21                    4
+  amp_std                2
+  C20_mag                2
+
+=== linear probe (test accuracy) ===
+  raw activations (256)     0.993
+  classical (16)            0.974
+  SAE alive (52)            0.988
+  PCA (52)                  0.995
+
+saved → results/seed_4/sae_vs_classical.json
+$ /usr/bin/python3 -m src.ablation --classifier results/seed_4/classifier.pt --sae results/seed_4/sae.pt --activations results/seed_4/activations.npz --analysis results/seed_4/sae_vs_classical.json --out results/seed_4/ablation.json
+alive features: 52
+classical families with SAE features: 9
+baseline accuracy: 0.9743
+
+=== per-family ablation ===
+  family                  n  abl_acc  rand_mean  rand_std  ★
+  C20_mag                 2   0.8834     0.9427    0.0426  ★
+  C21                     4   0.9743     0.8815    0.0745   
+  C41_mag                 5   0.8834     0.7740    0.1535   
+  amp_kurtosis            4   0.9743     0.8540    0.1242   
+  amp_std                 2   0.9743     0.9408    0.0496   
+  env_var                 8   0.8494     0.7231    0.1364   
+  phase_std              15   0.7093     0.5870    0.1152   
+  spec_bandwidth          5   0.7195     0.8219    0.1292   
+  spec_centroid           7   0.8834     0.7661    0.1396   
+
+saved → results/seed_4/ablation.json
+
+saved combined → results/multi_seed.json
